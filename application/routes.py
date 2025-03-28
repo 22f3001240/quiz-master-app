@@ -6,11 +6,9 @@ from flask import current_app as app, jsonify, request, render_template, send_fr
 from flask_security import auth_required, roles_required, roles_accepted, current_user, login_user
 from werkzeug.security import check_password_hash, generate_password_hash
 
-@app.route('/')
+@app.route('/', methods = ['GET'])
 def lp():
-    return jsonify({
-        'message': 'susvagatam'
-    })
+    return render_template('index.html')
 
 # @app.route('/api/login', methods=['GET'])
 # @auth_required('token') # Requires authentication via token

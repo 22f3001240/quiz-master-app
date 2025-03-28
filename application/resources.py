@@ -178,8 +178,8 @@ class QuizResource(Resource):
                 return {
                     "id": quiz.id,
                     "chapter_id": quiz.chapter_id,
-                    "date_of_quiz": quiz.date_of_quiz,
-                    "time_duration": quiz.time_duration,
+                    "date_of_quiz": quiz.date_of_quiz.isoformat() if quiz.date_of_quiz else None,
+                    "time_duration": str(quiz.time_duration) if quiz.time_duration else None,  # Ensuring it is string
                     "remarks": quiz.remarks
                 }, 200
             return {"message": "Quiz not found"}, 404
@@ -188,8 +188,8 @@ class QuizResource(Resource):
         return [{
             "id": q.id,
             "chapter_id": q.chapter_id,
-            "date_of_quiz": q.date_of_quiz,
-            "time_duration": q.time_duration,
+            "date_of_quiz": q.date_of_quiz.isoformat() if q.date_of_quiz else None,
+            "time_duration": str(q.time_duration) if q.time_duration else None,
             "remarks": q.remarks
         } for q in quizzes], 200
 
@@ -266,6 +266,7 @@ class QuestionResource(Resource):
         GET questions.
         If quiz_id is provided, returns all questions for that quiz.
         Otherwise, if question_id is provided, returns that specific question.
+        Otherwise, returns all questions.
         """
         if quiz_id:
             questions = Question.query.filter_by(quiz_id=quiz_id).all()
@@ -293,7 +294,19 @@ class QuestionResource(Resource):
                     "correct_option": q.correct_option
                 }, 200
             return {"message": "Question not found"}, 404
-        return {"message": "Provide quiz_id or question_id"}, 400
+        else:
+            # Return all questions when no parameters are provided
+            questions = Question.query.all()
+            return [{
+                "id": q.id,
+                "quiz_id": q.quiz_id,
+                "question_statement": q.question_statement,
+                "option1": q.option1,
+                "option2": q.option2,
+                "option3": q.option3,
+                "option4": q.option4,
+                "correct_option": q.correct_option
+            } for q in questions], 200
 
     @auth_required('token')
     @roles_required('admin')
@@ -368,34 +381,26 @@ class ScoreResource(Resource):
         GET scores.
         Admin users see all scores; regular users see only their own scores.
         """
+        def serialize_score(s):
+            return {
+                "id": s.id,
+                "quiz_id": s.quiz_id,
+                "user_id": s.user_id,
+                "time_stamp_of_attempt": s.time_stamp_of_attempt.isoformat() if s.time_stamp_of_attempt else None,
+                "total_scored": s.total_scored
+            }
+
         if current_user.has_role('admin'):
             if score_id:
                 score = Score.query.get(score_id)
                 if score:
-                    return {
-                        "id": score.id,
-                        "quiz_id": score.quiz_id,
-                        "user_id": score.user_id,
-                        "time_stamp_of_attempt": score.time_stamp_of_attempt,
-                        "total_scored": score.total_scored
-                    }, 200
+                    return serialize_score(score), 200
                 return {"message": "Score not found"}, 404
             scores = Score.query.all()
-            return [{
-                "id": s.id,
-                "quiz_id": s.quiz_id,
-                "user_id": s.user_id,
-                "time_stamp_of_attempt": s.time_stamp_of_attempt,
-                "total_scored": s.total_scored
-            } for s in scores], 200
+            return [serialize_score(s) for s in scores], 200
         else:
             scores = Score.query.filter_by(user_id=current_user.id).all()
-            return [{
-                "id": s.id,
-                "quiz_id": s.quiz_id,
-                "time_stamp_of_attempt": s.time_stamp_of_attempt,
-                "total_scored": s.total_scored
-            } for s in scores], 200
+            return [serialize_score(s) for s in scores], 200
 
     @auth_required('token')
     def post(self):
