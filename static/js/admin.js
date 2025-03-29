@@ -1271,19 +1271,21 @@ const AdminSummary = {
                 axios.get('/api/subjects'),
                 axios.get('/api/chapters'),
                 axios.get('/api/quizzes'),
-                axios.get('/api/scores')
+                axios.get('/api/scores'),
+                axios.get('/api/users')  // Add users endpoint here
             ])
             .then(responses => {
                 this.subjects = responses[0].data;
                 this.chapters = responses[1].data;
                 this.quizzes = responses[2].data;
                 this.scores = responses[3].data;
-                
-                // Get users
-                this.fetchUsers();
+                this.users = responses[4].data;  // Store users data
                 
                 // Update statistics
                 this.updateStats();
+                
+                // Generate user activity data
+                this.generateUserActivity();
                 
                 // Generate charts
                 this.$nextTick(() => {
@@ -1294,6 +1296,8 @@ const AdminSummary = {
                 console.error('Error loading data:', error);
             });
         },
+    
+        
         
         fetchUsers() {
             axios.get('/api/users')
@@ -1308,11 +1312,7 @@ const AdminSummary = {
                     this.errorMessage = 'Failed to load user data.';
                 });
         },
-        
-            
-            // Generate user activity data
-          //  this.generateUserActivity();
-        
+
         updateStats() {
             this.stats.totalUsers = this.users.length;
             this.stats.totalSubjects = this.subjects.length;

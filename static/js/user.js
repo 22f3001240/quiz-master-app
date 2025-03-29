@@ -963,7 +963,7 @@ const UserSummary = {
                         <div class="card-header bg-primary text-white">
                             Subject Performance
                         </div>
-                        <div class="card-body">
+                        <div class="card-body" style="height: 300px; max-height: 300px;">
                             <canvas ref="subjectScoresChart"></canvas>
                         </div>
                     </div>
@@ -973,7 +973,7 @@ const UserSummary = {
                         <div class="card-header bg-success text-white">
                             Monthly Activity
                         </div>
-                        <div class="card-body">
+                        <div class="card-body" style="height: 300px; max-height: 300px;">
                             <canvas ref="monthlyActivityChart"></canvas>
                         </div>
                     </div>
@@ -1023,6 +1023,27 @@ const UserSummary = {
                     </div>
                 </div>
             </div>
+            
+            <style>
+                .chart-container {
+                    position: relative;
+                    height: 300px;
+                    width: 100%;
+                }
+                .stat-card {
+                    border-radius: 10px;
+                    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+                    transition: transform 0.3s ease;
+                }
+                .stat-card:hover {
+                    transform: translateY(-5px);
+                }
+                .stat-number {
+                    font-size: 2.5rem;
+                    font-weight: bold;
+                    margin-bottom: 0;
+                }
+            </style>
         </div>
     `,
     data() {
@@ -1046,6 +1067,11 @@ const UserSummary = {
     },
     mounted() {
         this.loadData();
+        window.addEventListener('resize', this.handleResize);
+    },
+    beforeDestroy() {
+        window.removeEventListener('resize', this.handleResize);
+        this.destroyCharts();
     },
     methods: {
         loadData() {
@@ -1073,6 +1099,27 @@ const UserSummary = {
             .catch(error => {
                 console.error('Error loading data:', error);
             });
+        },
+        
+        handleResize() {
+            // Destroy and recreate charts on window resize for proper proportions
+            this.destroyCharts();
+            this.$nextTick(() => {
+                this.createCharts();
+            });
+        },
+        
+        destroyCharts() {
+            // Properly destroy chart instances to prevent memory leaks
+            if (this.subjectScoresChart) {
+                this.subjectScoresChart.destroy();
+                this.subjectScoresChart = null;
+            }
+            
+            if (this.monthlyActivityChart) {
+                this.monthlyActivityChart.destroy();
+                this.monthlyActivityChart = null;
+            }
         },
         
         processData() {
@@ -1127,6 +1174,9 @@ const UserSummary = {
         },
         
         createSubjectPerformanceChart() {
+            if (this.subjectScoresChart) {
+                this.subjectScoresChart.destroy();
+            }
             // Group scores by subject
             const subjectScores = {};
             
@@ -1197,7 +1247,7 @@ const UserSummary = {
                         scales: {
                             y: {
                                 beginAtZero: true,
-                                max: 100
+                                max: 100,
                             }
                         }
                     }
@@ -1242,16 +1292,43 @@ const UserSummary = {
                         datasets: [{
                             label: 'Quiz Attempts',
                             data: data,
-                            fill: false,
+                            fill: {
+                                target: 'origin',
+                                above: 'rgba(75, 192, 192, 0.2)',
+                            },
                             borderColor: 'rgba(75, 192, 192, 1)',
-                            tension: 0.1,
+                            tension: 0.3,
                             borderWidth: 2,
-                            pointBackgroundColor: 'rgba(75, 192, 192, 1)'
+                            pointBackgroundColor: 'rgba(75, 192, 192, 1)',
+                            pointRadius: 5,
+                            pointHoverRadius: 7
                         }]
                     },
                     options: {
                         responsive: true,
-                        maintainAspectRatio: false
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1,
+                                    precision: 0
+                                }
+                            }
+                        },
+                        plugins: {
+                            tooltip: {
+                                callbacks: {
+                                    title: function(tooltipItems) {
+                                        return tooltipItems[0].label;
+                                    },
+                                    label: function(context) {
+                                        const value = context.parsed.y;
+                                        return value + (value === 1 ? ' attempt' : ' attempts');
+                                    }
+                                }
+                            }
+                        }
                     }
                 });
             }
