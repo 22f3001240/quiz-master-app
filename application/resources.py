@@ -421,6 +421,21 @@ class ScoreResource(Resource):
         except Exception as e:
             db.session.rollback()
             return {"message": "Error recording score", "error": str(e)}, 400
+        
+class UserResource(Resource):
+    @auth_required('token')
+    @roles_required('admin')
+    def get(self):
+        """Return all user details."""
+        users = User.query.all()
+        return [{
+            "id": user.id,
+            "email": user.email,
+            "full_name": user.full_name,
+            "qualification": user.qualification,
+            "dob": user.dob.isoformat() if user.dob else None,
+            "active": user.active
+        } for user in users], 200
 
 # ------------------------------------------------------------
 # Registering Routes
@@ -430,3 +445,4 @@ api.add_resource(ChapterResource, '/api/chapters', '/api/chapters/<int:chapter_i
 api.add_resource(QuizResource, '/api/quizzes', '/api/quizzes/<int:quiz_id>')
 api.add_resource(QuestionResource, '/api/questions', '/api/questions/<int:question_id>', '/api/quizzes/<int:quiz_id>/questions')
 api.add_resource(ScoreResource, '/api/scores', '/api/scores/<int:score_id>')
+api.add_resource(UserResource, '/api/users')

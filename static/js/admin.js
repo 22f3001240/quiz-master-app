@@ -113,14 +113,14 @@ const AdminHome = {
                                     <thead>
                                         <tr>
                                             <th>Chapter Name</th>
-                                            <th>Questions</th>
+                                            <th>Quizzes</th>
                                             <th>Actions</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                         <tr v-for="chapter in getChaptersForSubject(subject.id)" :key="chapter.id">
                                             <td>{{ chapter.name }}</td>
-                                            <td>{{ getQuestionCountForChapter(chapter.id) }}</td>
+                                            <td>{{ getQuizCountForChapter(chapter.id) }}</td>
                                             <td>
                                                 <button class="btn btn-sm btn-outline-primary me-1" @click="editChapter(chapter)">
                                                     <i class="fas fa-edit"></i> Edit
@@ -340,15 +340,8 @@ const AdminHome = {
             return this.questions.filter(question => question.quiz_id === quizId);
         },
         
-        getQuestionCountForChapter(chapterId) {
-            const chapterQuizzes = this.getQuizzesForChapter(chapterId);
-            let count = 0;
-            
-            chapterQuizzes.forEach(quiz => {
-                count += this.getQuestionsForQuiz(quiz.id).length;
-            });
-            
-            return count;
+        getQuizCountForChapter(chapterId) {
+            return this.quizzes.filter(quiz => quiz.chapter_id === chapterId).length;
         },
         
         // Subject CRUD
@@ -816,12 +809,21 @@ const AdminQuiz = {
             return this.quizzes.filter(quiz => {
                 const chapter = this.chapters.find(c => c.id === quiz.chapter_id);
                 const subject = chapter ? this.subjects.find(s => s.id === chapter.subject_id) : null;
+                const quizQuestions = this.questions.filter(q => q.quiz_id === quiz.id);
+                const hasMatchingQuestion = quizQuestions.some(q => 
+                    q.question_statement.toLowerCase().includes(searchLower) ||
+                    q.option1.toLowerCase().includes(searchLower) ||
+                    q.option2.toLowerCase().includes(searchLower) ||
+                    (q.option3 && q.option3.toLowerCase().includes(searchLower)) ||
+                    (q.option4 && q.option4.toLowerCase().includes(searchLower))
+                );
                 
                 return (
                     (String(quiz.id).includes(searchLower)) ||
                     (quiz.remarks && quiz.remarks.toLowerCase().includes(searchLower)) ||
                     (chapter && chapter.name.toLowerCase().includes(searchLower)) ||
-                    (subject && subject.name.toLowerCase().includes(searchLower))
+                    (subject && subject.name.toLowerCase().includes(searchLower)) ||
+                    hasMatchingQuestion
                 );
             });
         }
@@ -862,16 +864,14 @@ const AdminQuiz = {
         },
         
         loadQuestions() {
-            if (this.selectedQuiz && this.selectedQuiz.id) {
-                axios.get(`/api/quizzes/${this.selectedQuiz.id}/questions`)
-                    .then(response => {
-                        this.questions = response.data;
-                    })
-                    .catch(error => {
-                        this.errorMessage = 'Failed to load questions.';
-                        console.error('Error loading questions:', error);
-                    });
-            }
+            axios.get(`/api/questions`)
+                .then(response => {
+                    this.questions = response.data;
+                })
+                .catch(error => {
+                    this.errorMessage = 'Failed to load questions.';
+                    console.error('Error loading questions:', error);
+                });
         },
         
         // Helper methods
@@ -894,8 +894,14 @@ const AdminQuiz = {
         
         formatDate(dateString) {
             if (!dateString) return '';
-            const date = new Date(dateString);
-            return date.toLocaleString();
+            try {
+                // Use system local time without enforcing time zone
+                const date = new Date(dateString);
+                return date.toLocaleString();
+            } catch (e) {
+                console.error("Date formatting error:", e);
+                return dateString;
+            }
         },
         
         updateChapterOptions() {
@@ -905,8 +911,17 @@ const AdminQuiz = {
         // Quiz CRUD
         viewQuizQuestions(quiz) {
             this.selectedQuiz = quiz;
-            this.quizQuestions = this.getQuestionsForQuiz(quiz.id);
-            this.showQuestionsModal = true;
+            
+            // Load questions directly from API to ensure up-to-date data
+            axios.get(`/api/quizzes/${quiz.id}/questions`)
+                .then(response => {
+                    this.quizQuestions = response.data;
+                    this.showQuestionsModal = true;
+                })
+                .catch(error => {
+                    this.errorMessage = 'Failed to load quiz questions.';
+                    console.error('Error loading quiz questions:', error);
+                });
         },
         
         closeQuestionsModal() {
@@ -919,10 +934,17 @@ const AdminQuiz = {
             const method = this.editingQuiz ? 'put' : 'post';
             const url = this.editingQuiz ? `/api/quizzes/${this.newQuiz.id}` : '/api/quizzes';
             
-            // Format date for API
+            // Format date for API - use local time without timezone conversion
             let formattedDate = this.quizDatetime;
             if (this.quizDatetime) {
-                formattedDate = new Date(this.quizDatetime).toISOString().replace('T', ' ').substring(0, 19);
+                const date = new Date(this.quizDatetime);
+                // Format as YYYY-MM-DD HH:MM:SS
+                formattedDate = date.getFullYear() + '-' +
+                    String(date.getMonth() + 1).padStart(2, '0') + '-' +
+                    String(date.getDate()).padStart(2, '0') + ' ' +
+                    String(date.getHours()).padStart(2, '0') + ':' +
+                    String(date.getMinutes()).padStart(2, '0') + ':' +
+                    String(date.getSeconds()).padStart(2, '0');
             }
             
             axios[method](url, {
@@ -999,11 +1021,19 @@ const AdminQuiz = {
             .then(response => {
                 this.successMessage = this.editingQuestion ? 'Question updated successfully!' : 'Question added successfully!';
                 this.closeQuestionModal();
+                
+                // Refresh questions
                 this.loadQuestions();
                 
                 // Refresh questions list for the quiz
                 if (this.selectedQuiz) {
-                    this.quizQuestions = this.getQuestionsForQuiz(this.selectedQuiz.id);
+                    axios.get(`/api/quizzes/${this.selectedQuiz.id}/questions`)
+                        .then(response => {
+                            this.quizQuestions = response.data;
+                        })
+                        .catch(error => {
+                            console.error('Error refreshing questions:', error);
+                        });
                 }
                 
                 // Clear message after 3 seconds
@@ -1065,7 +1095,13 @@ const AdminQuiz = {
                             
                             // Refresh questions list for the quiz
                             if (this.selectedQuiz) {
-                                this.quizQuestions = this.getQuestionsForQuiz(this.selectedQuiz.id);
+                                axios.get(`/api/quizzes/${this.selectedQuiz.id}/questions`)
+                                    .then(response => {
+                                        this.quizQuestions = response.data;
+                                    })
+                                    .catch(error => {
+                                        console.error('Error refreshing questions:', error);
+                                    });
                             }
                         }
                         
@@ -1142,7 +1178,7 @@ const AdminSummary = {
                         <div class="card-header bg-primary text-white">
                             Subject-wise Top Scores
                         </div>
-                        <div class="card-body">
+                        <div class="card-body" style="height: 300px; max-height: 300px;">
                             <canvas ref="subjectScoresChart"></canvas>
                         </div>
                     </div>
@@ -1152,7 +1188,7 @@ const AdminSummary = {
                         <div class="card-header bg-success text-white">
                             Subject-wise User Attempts
                         </div>
-                        <div class="card-body">
+                        <div class="card-body" style="height: 300px; max-height: 300px;">
                             <canvas ref="subjectAttemptsChart"></canvas>
                         </div>
                     </div>
@@ -1260,29 +1296,22 @@ const AdminSummary = {
         },
         
         fetchUsers() {
-            // In a real app, this would fetch from an API endpoint
-            // For now, we'll extract unique users from scores
-            const userIds = [...new Set(this.scores.map(score => score.user_id))];
-            
-            // Mock user data based on scores
-            this.users = userIds.map(id => {
-                const userScores = this.scores.filter(score => score.user_id === id);
-                const latestScore = userScores.reduce((latest, score) => {
-                    const scoreDate = new Date(score.time_stamp_of_attempt);
-                    const latestDate = latest ? new Date(latest.time_stamp_of_attempt) : new Date(0);
-                    return scoreDate > latestDate ? score : latest;
-                }, null);
-                
-                return {
-                    id: id,
-                    name: `User ${id}`,
-                    email: id === 1 ? 'user1@user.com' : `user${id}@example.com`
-                };
-            });
+            axios.get('/api/users')
+                .then(response => {
+                    // Use the returned data directly
+                    this.users = response.data;
+                    // Then update user activity based on actual user data and scores
+                    this.generateUserActivity();
+                })
+                .catch(error => {
+                    console.error('Error fetching user data:', error);
+                    this.errorMessage = 'Failed to load user data.';
+                });
+        },
+        
             
             // Generate user activity data
-            this.generateUserActivity();
-        },
+          //  this.generateUserActivity();
         
         updateStats() {
             this.stats.totalUsers = this.users.length;
@@ -1296,15 +1325,13 @@ const AdminSummary = {
                 const userScores = this.scores.filter(score => score.user_id === user.id);
                 const totalScore = userScores.reduce((sum, score) => sum + score.total_scored * 100, 0);
                 const averageScore = userScores.length ? (totalScore / userScores.length) : 0;
-                
                 const latestActivity = userScores.reduce((latest, score) => {
                     const scoreDate = new Date(score.time_stamp_of_attempt);
                     return latest && latest > scoreDate ? latest : scoreDate;
                 }, null);
-                
                 return {
                     id: user.id,
-                    name: user.name,
+                    name: user.full_name,
                     email: user.email,
                     attempts: userScores.length,
                     averageScore: averageScore,
@@ -1387,6 +1414,11 @@ const AdminSummary = {
                                 beginAtZero: true,
                                 max: 100
                             }
+                        },
+                        plugins: {
+                            legend: {
+                                display: false // Hide legend to save space
+                            }
                         }
                     }
                 });
@@ -1414,9 +1446,19 @@ const AdminSummary = {
                 subjectAttempts[subject.name]++;
             });
             
-            // Create chart data
-            const labels = Object.keys(subjectAttempts);
-            const data = labels.map(label => subjectAttempts[label]);
+            // Limit to top 5 subjects if there are too many
+            let labels = Object.keys(subjectAttempts);
+            let data = labels.map(label => subjectAttempts[label]);
+            
+            // Sort by attempt count and take top 5 if more than 5 subjects
+            if (labels.length > 5) {
+                const combined = labels.map((label, i) => ({ label, value: data[i] }));
+                combined.sort((a, b) => b.value - a.value);
+                const top5 = combined.slice(0, 5);
+                
+                labels = top5.map(item => item.label);
+                data = top5.map(item => item.value);
+            }
             
             // Create chart
             if (this.$refs.subjectAttemptsChart) {
@@ -1447,7 +1489,18 @@ const AdminSummary = {
                     },
                     options: {
                         responsive: true,
-                        maintainAspectRatio: false
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    boxWidth: 15,
+                                    font: {
+                                        size: 10
+                                    }
+                                }
+                            }
+                        }
                     }
                 });
             }
@@ -1462,7 +1515,13 @@ const AdminSummary = {
         
         formatDate(date) {
             if (!date) return 'Never';
-            return new Date(date).toLocaleString();
+            try {
+                // Use system local time without enforcing time zone
+                return new Date(date).toLocaleString();
+            } catch (e) {
+                console.error("Date formatting error:", e);
+                return String(date);
+            }
         },
         
         exportCSV() {
@@ -1517,8 +1576,12 @@ const AdminDashboard = {
         search(query) {
             this.searchQuery = query;
             // Pass search query to the current component
-            if (this.$refs.currentComponent && typeof this.$refs.currentComponent.setSearchText === 'function') {
-                this.$refs.currentComponent.setSearchText(query);
+            if (this.$refs.currentComponent) {
+                if (typeof this.$refs.currentComponent.setSearchText === 'function') {
+                    this.$refs.currentComponent.setSearchText(query);
+                } else {
+                    console.warn('Current component does not have setSearchText method');
+                }
             }
         },
         logout() {
