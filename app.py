@@ -5,6 +5,7 @@ from application.config import LocalDevelopmentConfig
 from flask_security import Security, SQLAlchemyUserDatastore
 from werkzeug.security import check_password_hash, generate_password_hash
 from application.resources import api
+from application.cel_init import celery_init_app
 
 def create_app():
     app = Flask(__name__)
@@ -17,7 +18,7 @@ def create_app():
     return app
 
 app = create_app()
-
+celery = celery_init_app(app)
 
 with app.app_context():
     """Create all tables in the database."""

@@ -1,8 +1,8 @@
 quiz-master-v2/
+│ 
+├── app.py        # Flask application setup
 │
 ├── application/
-│   ├── __init__.py
-│   ├── app.py               # Flask application setup (already provided)
 │   ├── config.py            # Configuration file (already provided)
 │   ├── database.py          # Database setup (already provided)
 │   ├── models.py            # Database models (already provided)
